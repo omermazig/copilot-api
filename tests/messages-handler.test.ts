@@ -101,6 +101,7 @@ const createPayload = (
 
 beforeEach(() => {
   state.verbose = false
+  state.tokenBasedBilling = false
   messagesApiEnabled = true
   responsesApiWebSocketEnabled = true
   modelMappings = {}
@@ -724,6 +725,90 @@ describe("messages handler orchestration", () => {
     expect(await response.text()).toBe("messages")
     expect(findEndpointModel).toHaveBeenCalledTimes(1)
     expect(findEndpointModel).toHaveBeenCalledWith("auto-model")
+  })
+
+  test("applies the warmup model override for token-based billing accounts", async () => {
+    state.tokenBasedBilling = true
+    selectedModel = {
+      id: "messages-model",
+      supported_endpoints: ["/v1/messages"],
+    }
+
+    const app = createApp()
+    const response = await app.request("/", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "anthropic-beta": "warmup-beta",
+      },
+      body: JSON.stringify(createPayload()),
+    })
+
+    expect(response.status).toBe(200)
+    expect(findEndpointModel).toHaveBeenCalledWith("small-model")
+  })
+
+  test("keeps the Claude auto model override on token-based billing accounts", async () => {
+    state.tokenBasedBilling = true
+    claudeAutoModel = "auto-model"
+    selectedModel = {
+      id: "auto-model",
+      supported_endpoints: ["/v1/messages"],
+    }
+
+    const app = createApp()
+    const response = await app.request("/", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "anthropic-beta": "warmup-beta",
+      },
+      body: JSON.stringify(
+        createPayload({
+          stop_sequences: ["</block>"],
+          system: [
+            {
+              type: "text",
+              text: "You are a security monitor for autonomous AI coding agents. Check the changes.",
+            },
+          ],
+        }),
+      ),
+    })
+
+    expect(response.status).toBe(200)
+    expect(findEndpointModel).toHaveBeenCalledWith("auto-model")
+  })
+
+  test("falls back to the warmup model for security-monitor requests when claudeAutoModel is unset", async () => {
+    claudeAutoModel = undefined
+    selectedModel = {
+      id: "messages-model",
+      supported_endpoints: ["/v1/messages"],
+    }
+
+    const app = createApp()
+    const response = await app.request("/", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "anthropic-beta": "warmup-beta",
+      },
+      body: JSON.stringify(
+        createPayload({
+          stop_sequences: ["</block>"],
+          system: [
+            {
+              type: "text",
+              text: "You are a security monitor for autonomous AI coding agents. Check the changes.",
+            },
+          ],
+        }),
+      ),
+    })
+
+    expect(response.status).toBe(200)
+    expect(findEndpointModel).toHaveBeenCalledWith("small-model")
   })
 
   test("prefers dispatch-provided session, request, and subagent context", async () => {
