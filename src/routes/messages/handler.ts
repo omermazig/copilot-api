@@ -143,9 +143,12 @@ export async function handleCompletionPayload(
 
   // fix claude code 2.0.28+ warmup request consume premium request, forcing small model if no tools are used
   // set "CLAUDE_CODE_SUBAGENT_MODEL": "you small model" also can avoid this
+  // applies to token-based-billing accounts too: they have no premium-request
+  // quota to preserve, but warmups are still billed per token, so downgrading
+  // them to the small model is a real saving
   const anthropicBeta = c.req.header("anthropic-beta")
   logger.debug("Anthropic Beta header:", anthropicBeta)
-  if (!state.tokenBasedBilling && !shouldUseClaudeAutoModel) {
+  if (!shouldUseClaudeAutoModel) {
     const tools = anthropicPayload.tools
     const noTools = !tools || tools.length === 0
     if (anthropicBeta && noTools && compactType === 0) {
